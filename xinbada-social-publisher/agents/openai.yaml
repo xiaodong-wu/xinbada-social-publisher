@@ -1,0 +1,4 @@
+interface:
+  display_name: "辛巴达社媒自动发布"
+  short_description: "从辛巴达官网选品，生成英文B2B文案与四宫格图片并发布到指定Facebook主页"
+  default_prompt: "使用 $xinbada-social-publisher 从 nutricdmo.com 随机选择一个产品，生成英文 B2B 文案和四宫格配图，通过预检后发布到指定 Facebook 主页并返回中文发布清单。"
