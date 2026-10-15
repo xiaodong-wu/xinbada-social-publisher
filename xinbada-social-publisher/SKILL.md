@@ -26,8 +26,12 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
    `scripts/scrape_product.py --output-root RUNS_ROOT --mode live|dry-run`. Default `RUNS_ROOT` is
    `campaign-runs` in the current workspace. Use `--product-url URL` when supplied. Inspect the
    live page, `source/page.html`, `product.json` and `source/hero.*`. Discover all listing pages
-   before shuffling; retain the shared ten-candidate limit. Reject mixed-product or contradictory
-   ingredients, formats, quantities and detail text. Scripts do not replace editorial review.
+   before shuffling; retain the shared ten-candidate limit. Use only the unique top
+   `section.product_overview`: title, summary, overview specifications and first main image.
+   Ignore all generic detail templates, including `pd_formula_item`, `pd_story_tile`, FAQs,
+   recommendations and their other-product text/images; these are neither facts nor rejection
+   reasons. Reject contradictions within the allowed fields or between those fields and the hero.
+   Scripts do not replace editorial review. Never fill missing facts from the excluded templates.
    Use `--retry-from MANIFEST --reason TEXT` for a source rejection before any submission.
    A targeted product cannot be substituted. Store artifacts outside the installed skill.
 3. **Draft.** Read [content-spec.md](references/content-spec.md). Generate `keyword-plan.json`

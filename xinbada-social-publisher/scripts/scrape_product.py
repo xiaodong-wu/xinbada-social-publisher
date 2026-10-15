@@ -135,10 +135,11 @@ def catalog(path):
         raise
 
 
-ALIASES = {'main ingredient': 'ingredients', 'main ingredients': 'ingredients',
+ALIASES = {'main ingredient': 'ingredients', 'main ingredients': 'ingredients', 'formula': 'ingredients',
            'ingredients': 'ingredients', 'dosage form': 'format', 'format': 'format',
-           'serving or dose': 'serving', 'serving': 'serving', 'dose': 'serving',
-           'package': 'package', 'packaging': 'package', 'shelf life': 'shelf_life',
+           'serving or dose': 'serving', 'serving': 'serving', 'dose': 'serving', 'listed dose': 'serving',
+           'package': 'package', 'packaging': 'package', 'package specification': 'package',
+           'shelf life': 'shelf_life',
            'flavor': 'flavor', 'flavour': 'flavor', 'private label': 'private_label'}
 
 
@@ -161,21 +162,22 @@ def formats(text):
 
 def extract(html, url):
     root = Document(html).root
-    title, summary = first_text(root, 'ov_title'), first_text(root, 'ov_subtitle')
+    # The rest of this site's detail page is a reused template, not product evidence.
+    overviews = root.nodes('section', cls='product_overview')
+    overview = overviews[0] if len(overviews) == 1 else Node()
+    titles, summaries = overview.nodes(cls='ov_title'), overview.nodes(cls='ov_subtitle')
+    title = titles[0].text() if len(titles) == 1 else ''
+    summary = summaries[0].text() if len(summaries) == 1 else ''
     canon = [n.attrs.get('href', '') for n in root.nodes('link') if 'canonical' in n.attrs.get('rel', '').split()]
     canonical = site_url(canon[0], url) if canon else url
     if not is_product(canonical):
         raise ValueError('Canonical URL is not a product page')
     rows = []
-    for group in root.nodes(cls='ov_attributes'):
+    for group in overview.nodes(cls='ov_attributes'):
         for li in group.nodes('li'):
             key, sep, value = li.text().partition(':')
-            if sep and value.strip():
+            if sep and value.strip() and norm(value) not in ('not stated', 'not specified', 'n a'):
                 rows.append((key.strip(), value.strip(), 'overview'))
-    for item in root.nodes(cls='pd_formula_item'):
-        keys, values = item.nodes('h3'), item.nodes('p')
-        if keys and values:
-            rows.append((keys[0].text(), values[0].text(), 'formula'))
     records = {}
     for key, value, source in rows:
         key = ALIASES.get(norm(key), norm(key).replace(' ', '_'))
@@ -190,31 +192,30 @@ def extract(html, url):
         else:
             conflicts[key] = items
     gallery = []
-    for group in root.nodes(cls='gallery_main'):
-        for im in group.nodes('img'):
-            src = im.attrs.get('src') or im.attrs.get('data-src')
+    hero_groups = overview.nodes(cls='gallery_main')
+    if len(hero_groups) == 1:
+        images = hero_groups[0].nodes('img')
+        if images:
+            src = images[0].attrs.get('src') or images[0].attrs.get('data-src')
             if src:
-                link = site_url(src, url)
-                if link not in gallery:
-                    gallery.append(link)
-    stories = [n.text() for n in root.nodes(cls='pd_story_tile')]
-    detail = first_text(root, 'product_detail_box')
+                gallery.append(site_url(src, url))
     core_formats = formats(declared.get('format', ''))
     reasons = []
+    if len(overviews) != 1:
+        reasons.append('Expected exactly one current-product overview')
     if not title or not summary or len(declared) < 3:
         reasons.append('Insufficient product title, summary or structured facts')
     if conflicts:
         reasons.append('Conflicting structured product fields: ' + ', '.join(conflicts))
     if not gallery:
-        reasons.append('No same-site gallery hero')
-    if core_formats and any(formats(s) - core_formats for s in stories):
-        reasons.append('Product story has a physical format inconsistent with overview')
+        reasons.append('No unambiguous same-site current-product hero')
     if core_formats and formats(title) and not core_formats.intersection(formats(title)):
         reasons.append('Title and overview physical formats conflict')
     return {'source_url': url, 'canonical_url': canonical, 'fetched_at': now(),
+            'evidence_scope': EVIDENCE_SCOPE.copy(),
             'title': title, 'summary': summary, 'facts': {'declared': declared,
             'corroborated': corroborated, 'conflicts': conflicts, 'records': records},
-            'gallery': gallery, 'review_only': {'product_body': detail, 'story_tiles': stories},
+            'gallery': gallery,
             'screening': {'status': 'rejected' if reasons else 'requires_editorial_review', 'reasons': reasons}}
 
 

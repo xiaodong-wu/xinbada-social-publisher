@@ -15,11 +15,14 @@ from validate_completion import completion
 def fixture(root, mode='live'):
     (root / 'source').mkdir()
     (root / 'evidence').mkdir()
-    product = {'canonical_url': BASE + '/test-product.html', 'title': 'Xinbada Creatine Monohydrate Powder OEM ODM',
-               'summary': 'Unflavored powder for private label projects.',
-               'facts': {'declared': {'ingredients': 'Creatine monohydrate', 'format': 'Powder',
-                         'private_label': 'Private label OEM ODM', 'package': '500g jar'}, 'conflicts': {}},
-               'screening': {'reasons': []}}
+    html = '''<section class="product_overview">
+      <h1 class="ov_title">Xinbada Creatine Monohydrate Powder OEM ODM</h1>
+      <p class="ov_subtitle">Unflavored powder for private label projects.</p>
+      <ul class="ov_attributes"><li>Ingredients: Creatine monohydrate</li><li>Format: Powder</li>
+      <li>Private label: Private label OEM ODM</li><li>Package: 500g jar</li></ul>
+      <div class="gallery_main"><img src="/hero.png"></div></section>'''
+    (root / 'source/page.html').write_text(html)
+    product = extract(html, BASE + '/test-product.html')
     write(root / 'product.json', product)
     copy = '''🧪 Creatine monohydrate powder offers a focused starting point for your next sourcing discussion.
 📦 A 500g jar provides a clear packaging reference for a private label brief.
@@ -145,6 +148,18 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Numeric claim differs'):
             validate(self.path)
 
+    def test_old_or_polluted_extraction_cannot_publish(self):
+        product = read(self.root/'product.json')
+        product.pop('evidence_scope')
+        write(self.root/'product.json', product)
+        with self.assertRaisesRegex(ValueError, 'evidence scope is outdated'):
+            validate(self.path)
+        product['evidence_scope'] = EVIDENCE_SCOPE.copy()
+        product['facts']['declared']['ingredients'] = 'Unrelated template formula'
+        write(self.root/'product.json', product)
+        with self.assertRaisesRegex(ValueError, 'differs from scoped source extraction'):
+            validate(self.path)
+
     def test_wrong_permalink_and_image_size(self):
         self.assertFalse(permalink(FACEBOOK))
         self.assertFalse(permalink('https://www.facebook.com/999/posts/123'))
@@ -164,6 +179,7 @@ class WorkflowTests(unittest.TestCase):
 
 
 class ExtractionTests(unittest.TestCase):
+    OVERVIEW = '<section class="product_overview"><h1 class="ov_title">Creatine Soft Chews</h1><p class="ov_subtitle">Private label supply</p><ul class="ov_attributes"><li>Dosage Form: Soft chews</li><li>Package: 60 chews</li><li>Shelf Life: 18 months</li></ul><div class="gallery_main"><img src="/hero.webp"><img src="/other.webp"></div></section>'
     def test_pagination_traversal_dedup_and_later_links(self):
         def page(product, links):
             return '<h3 class="hn-card-title"><a href="/'+product+'.html">P</a></h3><div class="hn-pagination">'+''.join('<a href="'+x+'">Next</a>' for x in links)+'</div>'
@@ -173,12 +189,35 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(set(catalog(path)),{BASE+'/'+x+'.html' for x in 'abc'})
             self.assertEqual(read(path)['listing_count'],3)
 
-    def test_mixed_format_and_structured_conflict(self):
-        html='<h1 class="ov_title">Creatine Soft Chews</h1><p class="ov_subtitle">Private label supply</p><ul class="ov_attributes"><li>Dosage Form: Soft chews</li><li>Package: 60 chews</li><li>Shelf Life: 18 months</li></ul><div class="gallery_main"><img src="/hero.webp"></div><article class="pd_formula_item"><h3>Package</h3><p>120 chews</p></article><article class="pd_story_tile">Oral Liquid Drops</article>'
+    def test_generic_template_is_neither_evidence_nor_rejection(self):
+        template = '<article class="pd_formula_item"><h3>Package</h3><p>120 chews</p></article><article class="pd_story_tile">Oral Liquid Drops B12</article><div class="ov_title">Wrong footer title</div><div class="ov_subtitle">Wrong footer summary</div><ul class="ov_attributes"><li>Package: 60mL drops</li></ul><div class="gallery_main"><img src="/footer.webp"></div>'
+        product=extract(template+self.OVERVIEW+template,BASE+'/a.html')
+        self.assertEqual(source_map(product),{'title':'Creatine Soft Chews','summary':'Private label supply','facts.format':'Soft chews','facts.package':'60 chews','facts.shelf_life':'18 months'})
+        self.assertEqual(product['gallery'], [BASE+'/hero.webp'])
+        self.assertNotIn('review_only', product)
+        self.assertFalse(product['screening']['reasons'])
+
+    def test_current_product_conflict_still_rejected(self):
+        html=self.OVERVIEW.replace('</ul>', '<li>Package specification: 120 chews</li></ul>').replace('Creatine Soft Chews','Creatine Powder')
         product=extract(html,BASE+'/a.html')
         self.assertIn('package',product['facts']['conflicts'])
         self.assertEqual(product['screening']['status'],'rejected')
         self.assertEqual(len(product['screening']['reasons']),3)
+
+    def test_missing_or_ambiguous_overview_never_falls_back(self):
+        for html in (self.OVERVIEW.replace('product_overview','generic_template'), self.OVERVIEW*2):
+            product=extract(html, BASE+'/a.html')
+            self.assertEqual(source_map(product), {'title':'','summary':''})
+            self.assertEqual(product['gallery'], [])
+            self.assertEqual(product['screening']['status'],'rejected')
+
+    def test_missing_hero_and_unspecified_facts_never_fall_back(self):
+        html=self.OVERVIEW.replace('gallery_main','thumbnails').replace('60 chews','Not stated')
+        html += '<div class="gallery_main"><img src="/template.webp"></div>'
+        product=extract(html, BASE+'/a.html')
+        self.assertNotIn('package', product['facts']['declared'])
+        self.assertFalse(product['gallery'])
+        self.assertEqual(product['screening']['status'],'rejected')
 
     def test_complete_pool_budget_and_targeted_failure(self):
         with tempfile.TemporaryDirectory() as temp:

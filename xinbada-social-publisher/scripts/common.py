@@ -14,6 +14,14 @@ CATALOG = BASE + '/product/'
 PAGE_ID = '61589310638473'
 FACEBOOK = 'https://www.facebook.com/profile.php?id=' + PAGE_ID
 SKILL = 'xinbada-social-publisher'
+EVIDENCE_SCOPE = {
+    'version': 2,
+    'container': 'section.product_overview',
+    'title': '.ov_title',
+    'summary': '.ov_subtitle',
+    'specifications': '.ov_attributes li',
+    'hero': '.gallery_main img:first',
+}
 
 
 def now():
@@ -89,6 +97,8 @@ def load_manifest(path):
 
 
 def source_map(product):
+    if product.get('evidence_scope') != EVIDENCE_SCOPE:
+        raise ValueError('Product evidence scope is outdated; start a fresh extraction')
     return {'title': product['title'], 'summary': product['summary'],
             **{'facts.' + key: value for key, value in product['facts']['declared'].items()}}
 

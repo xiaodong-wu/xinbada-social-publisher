@@ -7,18 +7,24 @@ coverage status. Non-missing unreadable listings block complete discovery. Later
 the queue until it is empty; no page-count cap and no sampling only the first page.
 
 Shuffle the full deduplicated pool once and save `selection-ledger.json`. Try up to ten distinct
-candidates including manual rejections. Extract `ov_title`, `ov_subtitle`, `ov_attributes`,
-`pd_formula_item`, gallery hero and product body. Save raw HTML. The scraper detects conflicting
-structured values conservatively; it cannot decide all unfamiliar wording is equivalent.
+candidates including manual rejections. Inside exactly one `section.product_overview`, extract
+only its unique `ov_title`, unique `ov_subtitle`, `ov_attributes li` specifications and first
+`gallery_main img` as the hero. A missing/ambiguous overview must not fall back to global selectors.
+Only this hero is a visual reference; secondary gallery and template images are excluded.
+Save full raw HTML for audit, not as additional content evidence. Product JSON records evidence
+scope version 2 and only these fields; unspecified values are omitted from declared facts.
 
-Some observed pages contain unrelated template content. Generic company/FAQ content is excluded
-as evidence, but product-specific `pd_story_tile` and headings must still be checked for mismatched
-formula/format/package. Such conflicts reject the candidate, not justify choosing a convenient
-version. Automated screening covers structured conflicts and obvious incompatible formats, and
-requires the agent to review everything else before generating.
+The site's lower detail modules repeat generic content about other products. Exclude all
+`product_detail_box`, `pd_formula_item`, `pd_story_tile`, company, FAQ, recommendation and footer
+content, including their headings, quantities, formulas and images. Do not use them in keywords,
+copy or image prompts, and do not reject a candidate because they conflict with the allowed fields.
+Review only the current product's title, summary, overview specifications and hero for consistency.
+Conflicts within that allowed evidence still reject the candidate. Missing facts remain missing.
+The campaign validator re-extracts archived HTML and compares the allowed fields; old broad-scope
+extractions cannot publish. Start a fresh extraction instead of modifying historical run records.
 
-Missing or undecodable hero, insufficient facts, conflicting formula/quantity/format, mixed-product
-sections or missing keyword evidence reject a candidate. Tool/disk/network/authentication/catalog
+Missing or undecodable hero, insufficient allowed facts, conflicting formula/quantity/format
+within the allowed evidence or missing keyword evidence reject a candidate. Tool/disk/network/authentication/catalog
 failures stop the invocation. Candidate HTTP 404/410 is a source rejection; 403/429/timeouts cannot
 be evaded through reselection.
 

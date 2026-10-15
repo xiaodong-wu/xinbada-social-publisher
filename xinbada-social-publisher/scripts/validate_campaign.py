@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image
 from common import *
 from optimize_image import validate as validate_webp
+from scrape_product import extract
 
 # These are screening signals, not a complete semantic health-claim classifier.
 RISKY = re.compile(r'\b(?:cures?|treats?|prevents?|clinically proven|FDA[- ]approved|guaranteed|'
@@ -37,9 +38,12 @@ def validate(manifest_path, include_upload=True):
     product = read(paths['product'])
     require(product['canonical_url'] == m['product_url'], 'Product URL mismatch')
     require(not product['facts']['conflicts'] and not product['screening']['reasons'], 'Unresolved source conflicts')
+    sources = source_map(product)
+    extracted = extract((root / 'source/page.html').read_text(encoding='utf-8'), product['source_url'])
+    for key in ('canonical_url', 'title', 'summary', 'facts', 'gallery', 'evidence_scope', 'screening'):
+        require(product.get(key) == extracted.get(key), 'Product differs from scoped source extraction: ' + key)
     with Image.open(paths['hero']) as hero:
         hero.verify()
-    sources = source_map(product)
     copy = paths['copy'].read_text(encoding='utf-8').strip()
     lines = [line.strip() for line in copy.splitlines() if line.strip()]
     require(len(lines) >= 8, 'Expected four features, paragraph, CTA, URL and hashtag line')
