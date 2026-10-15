@@ -10,6 +10,7 @@ from optimize_image import strip_metadata, create_transport_jpeg, encode_webp, v
 from validate_campaign import validate
 from update_manifest import update
 from validate_completion import completion
+from report_sheet import plan, decision, record, checked_receipt, facebook_key, SPREADSHEET_ID, SHEET_TITLE, SHEET_NAME, HEADERS
 
 
 def fixture(root, mode='live'):
@@ -63,6 +64,26 @@ https://www.nutricdmo.com/test-product.html
     return path
 
 
+def publish_fixture(path):
+    root=path.parent; url='https://www.facebook.com/'+PAGE_ID+'/posts/123456'
+    update(path,'pending',submission_started=True)
+    write(root/'evidence/facebook-verification.json', {'checked_at':now(),'url':url,'page_id':PAGE_ID,'author_page_id':PAGE_ID,
+        'copy_sha256':sha(root/'facebook.txt'),'social_sha256':sha(root/'social.webp'),'text_matches':True,
+        'image_matches':True,'product_link_matches':True,'published_visible':True,'screenshot':'evidence/preview.png','verification_context':'Offline simulated verification'})
+    update(path,'published',url=url)
+
+
+def reporting_fixture(path):
+    expected=plan(path); root=path.parent
+    write(root/'evidence/google-sheet-metadata.json', {'structuredContent':{'spreadsheetId':SPREADSHEET_ID,'properties':{'title':SHEET_TITLE},
+        'sheets':[{'properties':{'sheetId':0,'title':SHEET_NAME,'gridProperties':{'rowCount':4}}}]}})
+    write(root/'evidence/google-sheet-readback.json', {'structuredContent':{'range':"'工作表1'!A1:E4",'majorDimension':'ROWS','values':[HEADERS,expected['values']]}})
+    receipt={k:expected[k] for k in ('spreadsheet_id','spreadsheet_title','sheet_id','sheet_name','dedupe_key')}
+    receipt.update(checked_at=now(), row_number=2, metadata_file='evidence/google-sheet-metadata.json',readback_files=['evidence/google-sheet-readback.json'])
+    write(root/'evidence/google-sheet-verification.json',receipt)
+    return receipt
+
+
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -103,6 +124,10 @@ class WorkflowTests(unittest.TestCase):
         ev['author_page_id']=PAGE_ID
         write(self.root/'evidence/facebook-verification.json',ev)
         update(self.path,'published',url=url)
+        with self.assertRaisesRegex(ValueError,'Google Sheets reporting'):
+            completion(self.path)
+        reporting_fixture(self.path)
+        record(self.path)
         self.assertEqual(completion(self.path)['status'],'complete')
         (self.root/'social-upload.jpg').unlink()
         self.assertEqual(completion(self.path)['status'],'complete')
@@ -176,6 +201,91 @@ class WorkflowTests(unittest.TestCase):
                 optimize_main()
         im=Image.new('RGB',(1024,1024)); im.info['icc_profile']=b'fake profile'
         self.assertFalse(strip_metadata(im).info)
+
+
+class ReportingTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory()
+        self.root=Path(self.temp.name).resolve()
+        self.path=fixture(self.root)
+        publish_fixture(self.path)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_row_mapping_blanks_and_stable_original_time(self):
+        expected=plan(self.path)
+        self.assertEqual(expected['values'][0], 'nutricdmo.com')
+        self.assertEqual((expected['values'][2],expected['values'][4]), ('',''))
+        ev=read(self.root/'evidence/facebook-verification.json')
+        from zoneinfo import ZoneInfo
+        self.assertEqual(expected['values'][1],datetime.fromisoformat(ev['checked_at']).astimezone(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S'))
+        record(self.path,'failed','Simulated connector failure')
+        self.assertEqual(plan(self.path),expected)
+        self.assertEqual(read(self.path)['channels']['facebook']['status'],'published')
+        with self.assertRaisesRegex(ValueError,'terminal'):
+            update(self.path,'pending',submission_started=True)
+
+    def test_dedup_tracking_and_url_wrappers(self):
+        expected=plan(self.path); row=expected['values'].copy()
+        row[3]='https://m.facebook.com/story.php?id='+PAGE_ID+'&story_fbid=123456&tracking=abc'
+        self.assertEqual(facebook_key(row[3]),expected['dedupe_key'])
+        self.assertEqual(decision(expected,[HEADERS,row])['action'],'already_reported')
+        self.assertEqual(decision(expected,[HEADERS])['action'],'append')
+
+    def test_duplicate_or_conflicting_existing_rows_block(self):
+        expected=plan(self.path); row=expected['values'].copy()
+        with self.assertRaisesRegex(ValueError,'Duplicate'):
+            decision(expected,[HEADERS,row,row])
+        for column in (0,1,2,4):
+            changed=row.copy();changed[column]='wrong'
+            with self.assertRaisesRegex(ValueError,'conflicts'):
+                decision(expected,[HEADERS,changed])
+
+    def test_unpublished_and_dry_run_cannot_report(self):
+        m=read(self.path);m['mode']='dry-run';write(self.path,m)
+        with self.assertRaisesRegex(ValueError,'Dry-run'):
+            record(self.path)
+        m['mode']='live';m['channels']['facebook']['status']='uncertain';write(self.path,m)
+        with self.assertRaisesRegex(ValueError,'verified published'):
+            plan(self.path)
+
+    def test_readback_target_headers_coverage_and_row_required(self):
+        receipt=reporting_fixture(self.path)
+        for key,value in (('spreadsheet_id','wrong'),('sheet_id',9),('row_number',3)):
+            with self.assertRaises(ValueError):
+                checked_receipt(self.path,{**receipt,key:value})
+        p=self.root/'evidence/google-sheet-readback.json'; data=read(p)
+        data['structuredContent']['range']="'工作表1'!A1:E3";write(p,data)
+        with self.assertRaisesRegex(ValueError,'all current rows'):
+            checked_receipt(self.path,receipt)
+        data['structuredContent']['range']="'工作表1'!A1:E4"
+        data['structuredContent']['values'][0][0]='wrong';write(p,data)
+        with self.assertRaisesRegex(ValueError,'headers'):
+            checked_receipt(self.path,receipt)
+
+    def test_record_idempotent_and_receipt_bound_without_reposting(self):
+        before=read(self.path)
+        reporting_fixture(self.path);record(self.path);record(self.path)
+        after=read(self.path)
+        self.assertEqual(before['channels'],after['channels'])
+        self.assertEqual(before['submission_history'],after['submission_history'])
+        self.assertEqual(len(after['reporting_history']),1)
+        self.assertEqual(completion(self.path)['google_sheet']['row_number'],2)
+        p=self.root/'evidence/google-sheet-readback.json';data=read(p)
+        data['structuredContent']['values'][1][2]='unwanted site link';write(p,data)
+        with self.assertRaisesRegex(ValueError,'conflicts'):
+            completion(self.path)
+
+    def test_connector_null_and_omitted_blank_cells(self):
+        receipt=reporting_fixture(self.path)
+        p=self.root/'evidence/google-sheet-readback.json';data=read(p)
+        data['structuredContent']['values'][1][2]=None
+        data['structuredContent']['values'][1].pop()
+        write(p,data)
+        self.assertEqual(checked_receipt(self.path,receipt)['values'][2:5:2],['',''])
+        record(self.path)
+        self.assertEqual(completion(self.path)['status'],'complete')
 
 
 class ExtractionTests(unittest.TestCase):

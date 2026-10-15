@@ -1,6 +1,6 @@
 ---
 name: xinbada-social-publisher
-description: 为辛巴达 Xinbada 从 nutricdmo.com/product/ 随机或指定选取营养补充剂产品，生成英文 B2B Facebook 文案和四宫格配图，发布到主页 61589310638473，并保存可核验的中文发布清单。用于辛巴达 Facebook 产品推广、自动发布或 dry-run；不包含站内文章和 LinkedIn 发布。
+description: 为辛巴达 Xinbada 从 nutricdmo.com/product/ 随机或指定选取营养补充剂产品，生成英文 B2B Facebook 文案和四宫格配图，发布到主页 61589310638473，按 Facebook 链接去重写入 Google Sheets 并返回中文发布清单。用于辛巴达 Facebook 产品推广、自动发布、登记补写或 dry-run；不包含站内文章和 LinkedIn 发布。
 ---
 
 # 辛巴达社媒自动发布
@@ -10,7 +10,7 @@ One invocation produces at most one Xinbada Facebook product post. Destination:
 `https://www.nutricdmo.com/product/`.
 
 An explicit request to run this skill (including an authorized scheduled trigger) authorizes
-publishing after preflight and validation without another routine confirmation. Creating, editing
+publishing and the mandatory Google Sheets audit row after preflight and validation without another routine confirmation. Creating, editing
 or inspecting the skill does not authorize a live run. `dry-run` creates local assets only.
 Automatic discovery alone is not publishing authorization. Create a schedule only when requested.
 
@@ -60,16 +60,23 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
    before final submit run `scripts/update_manifest.py MANIFEST --status pending
    --submission-started`, then click Publish once. Open the actual public permalink, verify author,
    copy, product link and image, and save `evidence/facebook-verification.json` plus screenshot.
-   Record `--status published --url PERMALINK`, then run `scripts/validate_completion.py MANIFEST`.
-   Only its `complete` result permits a completed live report. Helpers validate records; they do
-   not operate Facebook or independently prove remote state.
-7. **Report.** Save `report.md` and return a compact Chinese checklist: product/source URL,
+   Record `--status published --url PERMALINK`, then perform Sheets reporting below. Helpers
+   validate records; they do not operate Facebook or independently prove remote state.
+7. **Write Google Sheets.** Read [reporting.md](references/reporting.md) and follow the installed
+   `google-drive:google-sheets` skill. Immediately after a verified Facebook publication, write one
+   row to the fixed `social-auto-upload` spreadsheet. Use `nutricdmo.com`, the original publication
+   verification time in Asia/Shanghai, an empty website cell, the verified Facebook permalink,
+   and an empty LinkedIn cell. Deduplicate by Facebook link before writing. Read back the row and
+   prove exactly one matching record, save raw connector evidence, then record reporting with
+   `scripts/report_sheet.py MANIFEST --record reported`. Run `scripts/validate_completion.py MANIFEST`;
+   only its `complete` result permits a completed live report. A Sheets failure leaves Facebook
+   published and the overall workflow incomplete. Dry-run never writes Sheets.
+8. **Report.** Save `report.md` and return a compact Chinese checklist: product/source URL,
    Facebook status/permalink, tried/skipped candidates with reasons, artifact directory, selection
-   ledger and validation evidence. Distinguish blocked/failed/uncertain/dry-run/complete. Retain
-   the JPEG for resumption; it may be removed after completion. There is no mandatory Google
-   Sheets write: the template's five-column schema requires website and LinkedIn links absent
-   here. If separately requested, agree a Facebook-only mapping, follow the Google Sheets skill,
-   deduplicate by permalink and never republish to repair reporting.
+   ledger, Google Sheets status/row/link and validation evidence. Distinguish
+   blocked/failed/uncertain/dry-run/complete. Retain the JPEG for resumption; it may be removed
+   after completion. Reporting-only repairs use the existing verified manifest and start at
+   step 7; never select another product, regenerate content or republish Facebook for a Sheets repair.
 
 ## Failure and resume
 
@@ -80,7 +87,8 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
 - Reconcile ambiguity against published/scheduled/draft content before retrying. One retry at most,
   with evidence of non-publication; never submit twice speculatively or roll back success.
 - Resume only when the user identifies a run or asks to resume the latest incomplete run / retry
-  the just-reported blocker. Recheck identity and existing posts. Skip published runs. A normal new
+  the just-reported blocker. Recheck identity and existing posts when Facebook verification is needed.
+  Skip the Facebook publication step for already published runs; finish only missing reporting. A normal new
   invocation starts fresh and may repeat previous products.
 - A dry-run manifest cannot become live by editing status; start a fresh authorized live run.
 
@@ -97,5 +105,8 @@ python3 scripts/validate_campaign.py MANIFEST
 python3 scripts/update_manifest.py MANIFEST --status pending --submission-started
 python3 scripts/update_manifest.py MANIFEST --status published --url URL
 python3 scripts/update_manifest.py MANIFEST --status blocked --error TEXT
+python3 scripts/report_sheet.py MANIFEST
+python3 scripts/report_sheet.py MANIFEST --record reported
+python3 scripts/report_sheet.py MANIFEST --record blocked --error TEXT
 python3 scripts/validate_completion.py MANIFEST
 ```

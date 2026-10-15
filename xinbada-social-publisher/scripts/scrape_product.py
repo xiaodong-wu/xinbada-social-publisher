@@ -284,6 +284,7 @@ def select(ledger_path):
                         'selection_ledger': str(ledger_path), 'artifacts': {'product': 'product.json', 'hero': hero_path,
                         'copy': 'facebook.txt', 'keywords': 'keyword-plan.json', 'social': 'social.webp',
                         'upload': 'social-upload.jpg'}, 'channels': {'facebook': {'status': 'not_started'}},
+                        'reporting': {'google_sheet': {'status': 'not_started'}},
                         'submission_history': [], 'history': []}
             manifest_path = directory / 'manifest.json'
             write(manifest_path, manifest)
