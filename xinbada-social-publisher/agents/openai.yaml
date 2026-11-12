@@ -1,4 +1,4 @@
 interface:
   display_name: "辛巴达社媒自动发布"
   short_description: "辛巴达Facebook产品发布，按帖子链接去重写入Google Sheets并返回清单"
-  default_prompt: "使用 $xinbada-social-publisher 从 nutricdmo.com 随机选择一个产品，生成英文 B2B 文案和四宫格配图，通过预检后发布到指定 Facebook 主页，按 Facebook 链接去重写入指定 Google Sheets，站内和 LinkedIn 两列留空，读回核验后返回中文发布清单。"
+  default_prompt: "使用 $xinbada-social-publisher 从 nutricdmo.com 随机选择一个产品，生成不带网站链接的英文 B2B 文案和四宫格配图，通过预检后发布到指定 Facebook 主页，按 Facebook 链接去重写入指定 Google Sheets，站内和 LinkedIn 两列留空，读回核验后返回中文发布清单。"

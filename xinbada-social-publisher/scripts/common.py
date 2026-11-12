@@ -14,6 +14,10 @@ CATALOG = BASE + '/product/'
 PAGE_ID = '61589310638473'
 FACEBOOK = 'https://www.facebook.com/profile.php?id=' + PAGE_ID
 SKILL = 'xinbada-social-publisher'
+NO_WEBSITE_LINKS = 'no_website_links'
+WEBSITE_LINK = re.compile(
+    r'\b(?:[a-z][a-z0-9+.-]*://|www\.)|'
+    r'(?<![\w@])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]+)\b', re.I)
 EVIDENCE_SCOPE = {
     'version': 2,
     'container': 'section.product_overview',
@@ -38,6 +42,14 @@ def norm(text):
 
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def legacy_product_link(m, copy_path):
+    """Keep only pre-policy submitted copy compatible; fresh drafts never qualify."""
+    history = m.get('submission_history', [])
+    return bool(history and 'copy_policy' not in history[0]
+                and history[0].get('hashes', {}).get('copy') == sha(copy_path)
+                and m['product_url'] in Path(copy_path).read_text(encoding='utf-8').splitlines())
 
 
 def read(path):

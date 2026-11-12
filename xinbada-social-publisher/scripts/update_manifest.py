@@ -15,7 +15,12 @@ def publication_evidence(path, m, url):
     require(bool(m['submission_history']), 'No recorded submission')
     ev = read(root / 'evidence/facebook-verification.json')
     require(ev.get('url') == url and ev.get('page_id') == PAGE_ID and ev.get('author_page_id') == PAGE_ID, 'Published URL or author identity mismatch')
-    for key in ('text_matches', 'image_matches', 'product_link_matches', 'published_visible'):
+    copy_path = within(root, m['artifacts']['copy'])
+    legacy = legacy_product_link(m, copy_path)
+    link_check = 'product_link_matches' if legacy else NO_WEBSITE_LINKS
+    if not legacy:
+        require(not WEBSITE_LINK.search(copy_path.read_text(encoding='utf-8')), 'Social copy must not contain website links or bare domains')
+    for key in ('text_matches', 'image_matches', link_check, 'published_visible'):
         require(ev.get(key) is True, 'Publication verification missing: ' + key)
     require(ev.get('copy_sha256') == sha(within(root, m['artifacts']['copy'])) and ev.get('social_sha256') == sha(within(root, m['artifacts']['social'])), 'Publication evidence hashes are stale')
     require(bool(ev.get('verification_context')), 'Verification context missing')
@@ -77,7 +82,7 @@ def update(path, status, url=None, error=None, submission_started=False):
                 require(bool(reconcile.get('notes')), 'Reconciliation explanation missing')
                 screenshot(root, reconcile['screenshot'])
                 # Preserve the first preflight and every reconciliation in submission history.
-            m['submission_history'].append({'at': now(), 'hashes': result['hashes'], 'preflight': pre,
+            m['submission_history'].append({'at': now(), 'copy_policy': result['copy_policy'], 'hashes': result['hashes'], 'preflight': pre,
                                             'reconciliation': reconcile if len(m['submission_history']) else None})
             write(root / 'evidence/campaign-validation.json', result)
         if status == 'published':

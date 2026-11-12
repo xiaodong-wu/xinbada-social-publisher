@@ -36,9 +36,10 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
    A targeted product cannot be substituted. Store artifacts outside the installed skill.
 3. **Draft.** Read [content-spec.md](references/content-spec.md). Generate `keyword-plan.json`
    from product evidence without asking for keywords. Save `facebook.txt`: 80–150 English words,
-   four emoji-led feature lines, a buyer-oriented paragraph, an inquiry CTA, canonical product URL
-   on its own line and 8–12 relevant hashtags. Focus on supplement brands, distributors and
-   private-label/OEM/ODM procurement. Avoid health outcomes, dosing advice and unsupported
+   four emoji-led feature lines, a buyer-oriented paragraph, an inquiry CTA and 8–12 relevant
+   hashtags. Do not include website URLs or bare domains in the social copy. Keep the canonical
+   product URL in source records, the manifest and the local report. Focus on supplement brands,
+   distributors and private-label/OEM/ODM procurement. Avoid health outcomes, dosing advice and unsupported
    certifications. Save claim mappings in `evidence/content-review.json` as specified.
 4. **Image.** Load the installed `imagegen` skill. Inspect the hero with `view_image`, then use it
    as the imagegen reference for one square four-panel image. Preserve the exact product, packaging
@@ -59,7 +60,8 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
 6. **Publish and verify.** Upload only `social-upload.jpg` to the exact Facebook page. Immediately
    before final submit run `scripts/update_manifest.py MANIFEST --status pending
    --submission-started`, then click Publish once. Open the actual public permalink, verify author,
-   copy, product link and image, and save `evidence/facebook-verification.json` plus screenshot.
+   copy, image and absence of website links/link previews, and save
+   `evidence/facebook-verification.json` plus screenshot.
    Record `--status published --url PERMALINK`, then perform Sheets reporting below. Helpers
    validate records; they do not operate Facebook or independently prove remote state.
 7. **Write Google Sheets.** Read [reporting.md](references/reporting.md) and follow the installed

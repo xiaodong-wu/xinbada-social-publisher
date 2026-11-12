@@ -46,14 +46,18 @@ def validate(manifest_path, include_upload=True):
         hero.verify()
     copy = paths['copy'].read_text(encoding='utf-8').strip()
     lines = [line.strip() for line in copy.splitlines() if line.strip()]
-    require(len(lines) >= 8, 'Expected four features, paragraph, CTA, URL and hashtag line')
+    legacy = legacy_product_link(m, paths['copy'])
+    require(len(lines) >= (8 if legacy else 7), 'Expected four features, paragraph, CTA and hashtag line')
     require(all(re.match(r'^[\U0001F000-\U0001FAFF\u2600-\u27BF]', line) for line in lines[:4]), 'First four lines must be emoji-led features')
-    require(lines[-2] == m['product_url'], 'Canonical URL must be on the penultimate nonempty line')
-    require(re.findall(r'https?://\S+', copy) == [m['product_url']], 'Use exactly one full product URL')
+    if legacy:
+        require(lines[-2] == m['product_url'], 'Legacy canonical URL must be on the penultimate nonempty line')
+        require(re.findall(r'https?://\S+', copy) == [m['product_url']], 'Legacy copy must retain its original product URL')
+    else:
+        require(not WEBSITE_LINK.search(copy), 'Social copy must not contain website links or bare domains')
     hashtags = re.findall(r'#[A-Za-z][A-Za-z0-9_]*', lines[-1])
     require(8 <= len(hashtags) <= 12 and len(set(h.lower() for h in hashtags)) == len(hashtags), 'Use 8-12 distinct hashtags')
     require(' '.join(hashtags) == clean(lines[-1]), 'Last line must contain hashtags only')
-    body = '\n'.join(lines[:-2])
+    body = '\n'.join(lines[:-2] if legacy else lines[:-1])
     require(not re.search(r'[\u4e00-\u9fff]|<[^>]+>', body), 'Post must be English plain text')
     words = re.findall(r"\b[A-Za-z]+(?:[-'][A-Za-z]+)*\b", body)
     require(80 <= len(words) <= 150, 'Body word count must be 80-150; got ' + str(len(words)))
@@ -103,7 +107,8 @@ def validate(manifest_path, include_upload=True):
     hashes = {key: sha(path) for key, path in paths.items() if key != 'upload' or include_upload}
     hashes['content_review'] = sha(review_path)
     hashes['image_review'] = sha(image_review_path)
-    return {'status': 'valid', 'checked_at': now(), 'word_count': len(words), 'hashtag_count': len(hashtags), 'image': webp, 'hashes': hashes}
+    return {'status': 'valid', 'checked_at': now(), 'copy_policy': 'legacy_product_link' if legacy else NO_WEBSITE_LINKS,
+            'word_count': len(words), 'hashtag_count': len(hashtags), 'image': webp, 'hashes': hashes}
 
 
 def main():

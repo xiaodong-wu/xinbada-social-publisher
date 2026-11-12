@@ -43,10 +43,12 @@ requirements. Avoid health/performance claims in keywords. Do not ask the user f
 
 ## Copy and review
 
-Write 80–150 English words excluding URL/hashtags. Begin with four nonempty emoji-led feature
-lines; follow with a short sourcing paragraph, one direct B2B inquiry CTA, the exact canonical URL
-alone and 8–12 relevant hashtags on the last line. Brand: Xinbada. No additional external links,
-HTML, invented contacts or Markdown tables. Use the core phrase naturally at least once.
+Write 80–150 English words excluding hashtags. Begin with four nonempty emoji-led feature
+lines; follow with a short sourcing paragraph, one direct B2B inquiry CTA and 8–12 relevant
+hashtags on the last line. Brand: Xinbada. Do not include website URLs or bare domains anywhere
+in the social copy, including the CTA. Do not create a website link preview. Keep product-source
+URLs in product.json, the manifest and the local report for traceability. No HTML, invented
+contacts or Markdown tables. Use the core phrase naturally at least once.
 
 After reviewing, save `evidence/content-review.json`:
 

@@ -33,7 +33,6 @@ def fixture(root, mode='live'):
 For supplement brands and distributors, a practical supplier conversation starts with a clear product brief. Review the formula and packaging details, then outline the information your team needs before making a purchasing decision.
 
 Contact Xinbada to discuss your project requirements and request further product information.
-https://www.nutricdmo.com/test-product.html
 #Xinbada #PrivateLabel #OEM #ODM #Creatine #Powder #Sourcing #Supplements
 '''
     (root / 'facebook.txt').write_text(copy)
@@ -69,7 +68,7 @@ def publish_fixture(path):
     update(path,'pending',submission_started=True)
     write(root/'evidence/facebook-verification.json', {'checked_at':now(),'url':url,'page_id':PAGE_ID,'author_page_id':PAGE_ID,
         'copy_sha256':sha(root/'facebook.txt'),'social_sha256':sha(root/'social.webp'),'text_matches':True,
-        'image_matches':True,'product_link_matches':True,'published_visible':True,'screenshot':'evidence/preview.png','verification_context':'Offline simulated verification'})
+        'image_matches':True,'no_website_links':True,'published_visible':True,'screenshot':'evidence/preview.png','verification_context':'Offline simulated verification'})
     update(path,'published',url=url)
 
 
@@ -94,11 +93,58 @@ class WorkflowTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_valid_batch_and_dry_run(self):
-        self.assertEqual(validate(self.path)['status'], 'valid')
+        result = validate(self.path)
+        self.assertEqual(result['status'], 'valid')
+        self.assertEqual(result['copy_policy'], NO_WEBSITE_LINKS)
+        self.assertEqual(result['word_count'], 97)  # Includes the 12-word CTA, excludes hashtags.
         m=read(self.path); m['mode']='dry-run'; write(self.path,m)
         self.assertEqual(completion(self.path)['status'],'dry-run')
         with self.assertRaisesRegex(ValueError,'Dry-run'):
             update(self.path,'pending',submission_started=True)
+
+    def test_website_links_block_new_submission(self):
+        copy_path = self.root/'facebook.txt'
+        original = copy_path.read_text()
+        for link in (BASE+'/test-product.html', 'HTTP://example.com', 'https://example.com/path',
+                     'www.nutricdmo.com', 'nutricdmo.com/product/', 'example.co.uk',
+                     '[details](https://example.com)', '//example.com/path'):
+            with self.subTest(link=link):
+                copy_path.write_text(original.replace('Contact Xinbada', 'Visit '+link+'. Contact Xinbada'))
+                with self.assertRaisesRegex(ValueError, 'must not contain website links'):
+                    update(self.path, 'pending', submission_started=True)
+                self.assertFalse(read(self.path)['submission_history'])
+
+    def test_cta_remains_subject_to_content_checks(self):
+        copy_path = self.root/'facebook.txt'
+        copy_path.write_text(copy_path.read_text().replace('request further product information', 'request guaranteed results'))
+        with self.assertRaisesRegex(ValueError, 'unsupported health/certification/guarantee'):
+            validate(self.path)
+
+    def test_pre_policy_submission_can_finish_reporting_unchanged(self):
+        # Simulate the saved, frozen submission format of an earlier installed version.
+        hashes = validate(self.path)['hashes']
+        copy_path = self.root/'facebook.txt'
+        copy_path.write_text(copy_path.read_text().replace('#Xinbada', BASE+'/test-product.html\n#Xinbada'))
+        review = read(self.root/'evidence/content-review.json'); review['copy_sha256'] = sha(copy_path)
+        write(self.root/'evidence/content-review.json', review)
+        hashes.update(copy=sha(copy_path), content_review=sha(self.root/'evidence/content-review.json'))
+        m = read(self.path)
+        m['submission_history'] = [{'at': now(), 'hashes': hashes}]
+        m['channels']['facebook']['status'] = 'pending'
+        write(self.path, m)
+        self.assertEqual(validate(self.path)['copy_policy'], 'legacy_product_link')
+        url = 'https://www.facebook.com/'+PAGE_ID+'/posts/123456'
+        write(self.root/'evidence/facebook-verification.json', {'checked_at':now(),'url':url,'page_id':PAGE_ID,'author_page_id':PAGE_ID,
+            'copy_sha256':sha(copy_path),'social_sha256':sha(self.root/'social.webp'),'text_matches':True,
+            'image_matches':True,'product_link_matches':True,'published_visible':True,'screenshot':'evidence/preview.png',
+            'verification_context':'Offline pre-policy fixture'})
+        update(self.path, 'published', url=url)
+        reporting_fixture(self.path)
+        record(self.path)
+        self.assertEqual(completion(self.path)['status'], 'complete')
+        self.assertEqual(sha(copy_path), hashes['copy'])
+        self.assertEqual(read(self.path)['submission_history'], m['submission_history'])
+        self.assertEqual(plan(self.path)['values'][2:5:2], ['', ''])
 
     def test_identity_and_freshness_block(self):
         pre=read(self.root/'evidence/preflight.json'); pre['page_id']='61568292290322'
@@ -116,12 +162,18 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'No recorded submission'):
             update(self.path,'published',url=url)
         update(self.path,'pending',submission_started=True)
-        ev={'checked_at':now(),'url':url,'page_id':PAGE_ID,'author_page_id':PAGE_ID,'copy_sha256':sha(self.root/'facebook.txt'), 'social_sha256':sha(self.root/'social.webp'), 'text_matches':True,'image_matches':True,'product_link_matches':True,'published_visible':True,'screenshot':'evidence/preview.png','verification_context':'Offline simulated verification'}
+        ev={'checked_at':now(),'url':url,'page_id':PAGE_ID,'author_page_id':PAGE_ID,'copy_sha256':sha(self.root/'facebook.txt'), 'social_sha256':sha(self.root/'social.webp'), 'text_matches':True,'image_matches':True,'no_website_links':True,'published_visible':True,'screenshot':'evidence/preview.png','verification_context':'Offline simulated verification'}
         ev['author_page_id']='999'
         write(self.root/'evidence/facebook-verification.json',ev)
         with self.assertRaisesRegex(ValueError,'author identity'):
             update(self.path,'published',url=url)
         ev['author_page_id']=PAGE_ID
+        ev.pop('no_website_links')
+        ev['product_link_matches']=True
+        write(self.root/'evidence/facebook-verification.json',ev)
+        with self.assertRaisesRegex(ValueError,'no_website_links'):
+            update(self.path,'published',url=url)
+        ev['no_website_links']=True
         write(self.root/'evidence/facebook-verification.json',ev)
         update(self.path,'published',url=url)
         with self.assertRaisesRegex(ValueError,'Google Sheets reporting'):
