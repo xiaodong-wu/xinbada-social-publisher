@@ -1,6 +1,6 @@
 # 辛巴达社媒自动发布 · Xinbada Social Publisher
 
-适用于 Codex 的 Facebook 产品推广技能：从 [Xinbada 官网产品目录](https://www.nutricdmo.com/product/) 随机或指定选品，生成英文 B2B 文案和四宫格配图，并通过已认证的浏览器发布到指定主页。
+适用于 Codex 的 Facebook 产品推广技能：从 [Xinbada 官网产品目录](https://www.nutricdmo.com/product/) 随机或指定选品，生成英文 B2B 文案和四宫格配图，并通过 Chrome 浏览器插件操作已登录会话，发布到指定主页。
 
 **固定发布目标：[Facebook 主页 61589310638473](https://www.facebook.com/profile.php?id=61589310638473)。**
 
@@ -34,7 +34,7 @@
 
 - Python 3.10+ 和 Pillow，脚本中的发布记录文件锁使用 Unix `fcntl`，适用于 macOS/Linux。
 - Codex 可用的 `imagegen` 技能及图像生成工具。
-- 实际发布需要可控制的已登录 Chrome 会话，或具备等效身份校验与发布能力的连接器，并拥有目标主页的发帖权限。
+- 实际发布需要 Chrome 浏览器插件已连接、会话已登录，并拥有目标主页的发帖权限；身份检查、上传、预览、提交及核验均通过插件操作，插件不可用时停止。
 - 自动登记需要 Google Drive/Sheets 连接器及目标表格写入权限。
 
 在选定的 Python 环境安装 Pillow：

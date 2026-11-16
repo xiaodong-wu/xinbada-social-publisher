@@ -1,10 +1,19 @@
 # Facebook publishing
 
 Only destination: `https://www.facebook.com/profile.php?id=61589310638473`.
-Confirm its visible name live; never substitute another brand's remembered session. Discover
-connectors first, otherwise use current supported browser control of authenticated Chrome and read
-its returned documentation. `cua_repl` can be a direct tool. Do not import legacy runtimes, access
-credentials or bypass login. Missing identity/upload/preview/submit/verification capability blocks.
+Confirm its visible name live; never substitute another brand's remembered session.
+
+## Browser extension
+
+Use the authenticated Chrome browser extension connection for all Facebook operations: identity
+checks, composing, image upload, preview, submission, permalink verification and retry reconciliation.
+Use the supported browser tool (`mcp__cua_repl` when available), read its current returned documentation,
+and confirm Chrome is connected through the extension before proceeding. Use only the documented
+tab, page and file-upload APIs; do not import legacy runtimes, access credentials or bypass login.
+If the extension is unavailable or lacks identity/upload/preview/submit/verification capability,
+stop and record the blocker. Do not fall back to a Facebook publishing connector, direct API,
+raw CDP or a separate automated browser session. This route applies only to Facebook; product
+collection and Google Sheets reporting retain their existing tools and rules.
 
 ## One identity-switch sequence
 
