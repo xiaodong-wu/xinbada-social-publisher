@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
 from common import *
-from scrape_product import listing, catalog, extract, retry, select
+from scrape_product import listing, catalog, extract, retry, select, main as scrape_main
 from optimize_image import strip_metadata, create_transport_jpeg, encode_webp, validate as image_validate, main as optimize_main
 from validate_campaign import validate
 from update_manifest import update
@@ -81,6 +81,79 @@ def reporting_fixture(path):
     receipt.update(checked_at=now(), row_number=2, metadata_file='evidence/google-sheet-metadata.json',readback_files=['evidence/google-sheet-readback.json'])
     write(root/'evidence/google-sheet-verification.json',receipt)
     return receipt
+
+
+class PreflightResumeTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.run = Path(temp.name).resolve() / 'blocked-run'
+        self.status_path = self.run / 'run-status.json'
+        self.status = {'run_id': self.run.name, 'mode': 'live', 'stage': 'preflight', 'status': 'blocked',
+                       'catalog_discovery_started': False, 'candidates_checked': 0,
+                       'facebook': {'status': 'not_started', 'submission_attempts': 0, 'post_url': None}}
+        write(self.status_path, self.status)
+        self.evidence = self.run / 'evidence/browser-preflight.json'
+        write(self.evidence, {'verdict': 'blocked'})
+
+    def resume(self):
+        argv = ['scrape_product.py', '--resume-preflight', str(self.run), '--output-root', str(self.run.parent)]
+        with patch('sys.argv', argv), patch('builtins.print'):
+            return scrape_main()
+
+    def test_resume_in_place_and_preserve_budget(self):
+        with patch('scrape_product.catalog', return_value=[BASE + '/one.html']), patch(
+                'scrape_product.fetch', return_value=(b'<html></html>', BASE + '/one.html')):
+            self.assertEqual(self.resume(), 2)  # Real selection rejects the invalid product.
+        ledger = self.run / 'selection-ledger.json'
+        self.assertEqual(len(read(ledger)['attempts']), 1)
+        self.assertEqual(read(self.evidence), {'verdict': 'blocked'})
+        self.assertEqual(list(self.run.parent.iterdir()), [self.run])
+        before = ledger.read_bytes()
+        write(self.status_path, self.status)  # Stale status cannot reset an existing ledger.
+        with self.assertRaises(ValueError):
+            self.resume()
+        self.assertEqual(ledger.read_bytes(), before)
+
+    def test_catalog_failure_before_first_candidate_can_resume(self):
+        def fail_catalog(path):
+            write(path, {'status': 'blocked'})
+            raise TimeoutError('catalog timeout')
+        with patch('scrape_product.catalog', side_effect=fail_catalog), self.assertRaises(TimeoutError):
+            self.resume()
+        self.assertEqual(read(self.status_path)['status'], 'blocked')
+        with patch('scrape_product.catalog', return_value=[]):
+            self.assertEqual(self.resume(), 2)
+        archived, = (self.run / 'evidence').glob('catalog-before-retry-*.json')
+        self.assertEqual(read(archived), {'status': 'blocked'})
+
+    def test_targeted_resume_uses_original_url(self):
+        source = self.run.parent / 'product-fixture'
+        source.mkdir()
+        target = read(fixture(source))['product_url']
+        responses = [((source / 'source/page.html').read_bytes(), target),
+                     ((source / 'source/hero.png').read_bytes(), BASE + '/hero.png')]
+        self.status['requested_product_url'] = target
+        write(self.status_path, self.status)
+        with patch('scrape_product.catalog', side_effect=AssertionError('unexpected catalog lookup')), patch(
+                'scrape_product.fetch', side_effect=responses):
+            self.assertEqual(self.resume(), 0)
+        ledger = read(self.run / 'selection-ledger.json')
+        self.assertEqual(ledger['pool'], [target])
+        self.assertEqual(Path(ledger['current_manifest']), self.run / 'candidate-01/manifest.json')
+        self.assertEqual(read(self.status_path)['stage'], 'editorial_review')
+
+    def test_resume_refuses_prior_submission_or_orphan_candidate(self):
+        self.status['facebook']['submission_attempts'] = 1
+        write(self.status_path, self.status)
+        with self.assertRaises(ValueError):
+            self.resume()
+        self.status['facebook']['submission_attempts'] = 0
+        write(self.status_path, self.status)
+        (self.run / 'candidate-01').mkdir()
+        with self.assertRaises(ValueError):
+            self.resume()
+        self.assertFalse((self.run / 'selection-ledger.json').exists())
 
 
 class WorkflowTests(unittest.TestCase):

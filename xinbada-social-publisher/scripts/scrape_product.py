@@ -2,6 +2,7 @@
 """Discover the complete Xinbada catalog and extract a bounded, auditable selection."""
 from __future__ import annotations
 import argparse
+import fcntl
 import io
 import random
 import re
@@ -329,40 +330,108 @@ def retry(manifest_path, reason):
     return select(ledger_path)
 
 
+def start_selection(root, mode, product_url=None, catalog_only=False):
+    if product_url:
+        pool = [product_url]
+    else:
+        pool = catalog(root / 'catalog.json')
+        random.SystemRandom().shuffle(pool)
+    if catalog_only:
+        return {'status': 'catalog_complete', 'catalog': str(root / 'catalog.json'), 'products': len(pool)}
+    ledger_path = root / 'selection-ledger.json'
+    write(ledger_path, {'created_at': now(), 'mode': mode, 'targeted': bool(product_url),
+                       'catalog': str(root / 'catalog.json') if not product_url else None,
+                       'pool': pool, 'attempts': [], 'current_manifest': None, 'status': 'selecting'})
+    return select(ledger_path)
+
+
+def resume_preflight(root, runs_root):
+    """Start selection in a previously blocked run after the operator rechecks Facebook."""
+    if root.parent != runs_root or not (root / 'run-status.json').is_file():
+        raise ValueError('Expected an existing preflight run directly under --output-root')
+    with (root / '.preflight-resume.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        status_path = root / 'run-status.json'
+        status = read(status_path)
+        facebook = status.get('facebook', {})
+        preflight_block = (status.get('stage') == 'preflight' and status.get('status') == 'blocked'
+                           and status.get('catalog_discovery_started') is False)
+        interrupted_start = (status.get('stage') == 'selection'
+                             and status.get('status') in ('blocked', 'in_progress')
+                             and status.get('resumed_preflight_at'))
+        if (not (preflight_block or interrupted_start)
+                or status.get('run_id') != root.name or status.get('mode') != 'live'
+                or status.get('candidates_checked') != 0 or status.get('selection_ledger')
+                or status.get('product') or facebook.get('status') != 'not_started'
+                or facebook.get('submission_attempts') != 0 or facebook.get('post_url')):
+            raise ValueError('Resume requires a live preflight block before selection and submission')
+        allowed = {'evidence', 'report.md', 'run-status.json', '.preflight-resume.lock'}
+        if interrupted_start:
+            allowed.add('catalog.json')
+        if any(entry.name not in allowed for entry in root.iterdir()):
+            raise ValueError('Run contains selection or other work. Inspect its existing records')
+        target = status.get('requested_product_url')
+        if target:
+            target = site_url(target)
+            if not is_product(target):
+                raise ValueError('Invalid original product URL')
+        if interrupted_start and (root / 'catalog.json').exists():
+            evidence = root / 'evidence'
+            evidence.mkdir(exist_ok=True)
+            (root / 'catalog.json').rename(evidence / ('catalog-before-retry-' + uuid4().hex + '.json'))
+        status.update(stage='selection', status='in_progress', blocker=None, resumed_preflight_at=now(),
+                      catalog_discovery_started=not bool(target))
+        write(status_path, status)
+        try:
+            result = start_selection(root, 'live', target)
+        except Exception as exc:
+            status.update(status='blocked', blocker=str(exc))
+            raise
+        else:
+            if result['status'] == 'blocked':
+                status.update(status='blocked', blocker=result['error'])
+            else:
+                status['stage'] = 'editorial_review'
+            return result
+        finally:
+            ledger_path = root / 'selection-ledger.json'
+            if ledger_path.exists():
+                ledger = read(ledger_path)
+                status.update(selection_ledger=str(ledger_path), candidates_checked=len(ledger['attempts']))
+            write(status_path, status)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output-root', type=Path, default=Path.cwd() / 'campaign-runs')
     p.add_argument('--mode', choices=('live', 'dry-run'), default='live')
     p.add_argument('--product-url')
     p.add_argument('--catalog-only', action='store_true')
-    p.add_argument('--retry-from', type=Path)
+    group = p.add_mutually_exclusive_group()
+    group.add_argument('--retry-from', type=Path)
+    group.add_argument('--resume-preflight', type=Path, metavar='RUN')
     p.add_argument('--reason')
     args = p.parse_args()
+    runs_root = args.output_root.resolve()
     if args.retry_from:
         if not args.reason or args.product_url or args.catalog_only:
             p.error('--retry-from requires --reason and cannot combine with product/catalog-only')
         result = retry(args.retry_from.resolve(), args.reason)
+    elif args.resume_preflight:
+        if args.mode != 'live' or args.catalog_only or args.product_url or args.reason:
+            p.error('--resume-preflight uses the original live selection request')
+        result = resume_preflight(args.resume_preflight.resolve(), runs_root)
     else:
-        root = args.output_root.resolve() / (now()[:19].replace(':', '').replace('-', '') + '-' + uuid4().hex[:8])
-        root.mkdir(parents=True)
+        product_url = None
         if args.product_url:
             if args.catalog_only:
                 p.error('--catalog-only cannot combine with --product-url')
-            url = site_url(args.product_url)
-            if not is_product(url):
+            product_url = site_url(args.product_url)
+            if not is_product(product_url):
                 p.error('Expected a nutricdmo.com product detail URL')
-            pool = [url]
-        else:
-            pool = catalog(root / 'catalog.json')
-            random.SystemRandom().shuffle(pool)
-        if args.catalog_only:
-            result = {'status': 'catalog_complete', 'catalog': str(root / 'catalog.json'), 'products': len(pool)}
-        else:
-            ledger_path = root / 'selection-ledger.json'
-            write(ledger_path, {'created_at': now(), 'mode': args.mode, 'targeted': bool(args.product_url),
-                               'catalog': str(root / 'catalog.json') if not args.product_url else None,
-                               'pool': pool, 'attempts': [], 'current_manifest': None, 'status': 'selecting'})
-            result = select(ledger_path)
+        root = runs_root / (now()[:19].replace(':', '').replace('-', '') + '-' + uuid4().hex[:8])
+        root.mkdir(parents=True)
+        result = start_selection(root, args.mode, product_url, args.catalog_only)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 2 if result['status'] == 'blocked' else 0
 

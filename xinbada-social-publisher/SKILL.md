@@ -17,7 +17,8 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
 ## Workflow
 
 1. **Preflight.** Read [publishing.md](references/publishing.md). Use authenticated Chrome through
-   the browser extension connection for Facebook operations, following the tool's current documentation.
+   the browser extension connection for Facebook operations. Identify the extension from the current
+   browser inventory and use its returned ID as described in the publishing reference.
    Confirm exact page ID, active posting identity and create-post permission. Allow the bounded
    target-page switch in the reference. Stop for login, MFA, CAPTCHA, ambiguous identity or missing
    permission before generating. Dry-run requires no Facebook login. Confirm Python 3.10+ and
@@ -90,6 +91,11 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
   with evidence of non-publication; never submit twice speculatively or roll back success.
 - Resume only when the user identifies a run or asks to resume the latest incomplete run / retry
   the just-reported blocker. Recheck identity and existing posts when Facebook verification is needed.
+  For a block before selection, keep the original run directory and evidence. After the extension,
+  target identity and create-post permission pass, run `scripts/scrape_product.py --resume-preflight RUN`
+  instead of the fresh-run command in step 2. Preserve a specified product in `requested_product_url`
+  (for older runs, recover it from the original request). If a ledger or manifest exists, continue
+  from that record and its remaining candidate budget.
   Skip the Facebook publication step for already published runs; finish only missing reporting. A normal new
   invocation starts fresh and may repeat previous products.
 - A dry-run manifest cannot become live by editing status; start a fresh authorized live run.
@@ -100,6 +106,7 @@ Paths are relative to this skill. Helpers require the standard library plus Pill
 
 ```bash
 python3 scripts/scrape_product.py [--output-root DIR] [--mode live|dry-run] [--product-url URL]
+python3 scripts/scrape_product.py --resume-preflight RUN [--output-root RUNS_ROOT]
 python3 scripts/scrape_product.py --retry-from MANIFEST --reason "Source conflict"
 python3 scripts/scrape_product.py --catalog-only --output-root DIR
 python3 scripts/optimize_image.py INPUT OUTPUT --kind social [--transport-jpeg PATH]
