@@ -17,8 +17,8 @@ Automatic discovery alone is not publishing authorization. Create a schedule onl
 ## Workflow
 
 1. **Preflight.** Read [publishing.md](references/publishing.md). Use authenticated Chrome through
-   the browser extension connection for Facebook operations. Identify the extension from the current
-   browser inventory and use its returned ID as described in the publishing reference.
+   the browser extension connection for Facebook operations. Follow [browser selection](references/browser-selection.md) for an attached tab,
+   a live Chrome binding, or fresh discovery. The resulting browser/tab choice starts the identity check.
    Confirm exact page ID, active posting identity and create-post permission. Allow the bounded
    target-page switch in the reference. Stop for login, MFA, CAPTCHA, ambiguous identity or missing
    permission before generating. Dry-run requires no Facebook login. Confirm Python 3.10+ and

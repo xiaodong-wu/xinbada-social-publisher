@@ -10,22 +10,11 @@ checks, composing, image upload, preview, submission, permalink verification and
 Use the supported browser tool (`mcp__cua_repl` when available), read its current returned documentation,
 and confirm Chrome is connected through the extension before proceeding. Use only the documented
 tab, page and file-upload APIs; do not import legacy runtimes, access credentials or bypass login.
-On a live run or an explicit reconnect/retry, inspect the **current chat's** browser inventory
-(`cua.getState()` in CUA). Identify Chrome by its observed name/family and `type: "extension"`.
-Use the returned browser ID for this invocation. If the user attached a tab, bind that tab and
-verify its browser. Otherwise reuse the exact target tab in that browser, or open the target URL
-with that browser ID. IDs may change between invocations. If several Chrome profiles match,
-prefer the one identified by the user's attached tab or a uniquely matching target page. If still
-ambiguous, ask the user to attach the intended Chrome tab.
 
-If opening `chrome` by name fails or a recently connected extension is missing, allow a short
-connection window (about 5 seconds) and refresh the browser inventory once. If Chrome now
-appears as an extension, bind its returned ID and continue
-the same run. If only an in-app browser, MCP Apps or native Chrome is visible, report
-“当前聊天未检测到 Chrome 扩展连接”, along with the observed browser names/types. Suggest attaching
-the intended Chrome tab to this chat and retrying. An inventory error means the connection could
-not be checked. A visible extension with a failing tab operation is a different error: report
-that operation and its message. Never infer Facebook logout or installation status from discovery.
+Follow [Chrome connection and tab selection](browser-selection.md) when starting a live
+Facebook step or recovering a lost connection. Keep the selected Chrome binding through
+preview, submission and verification. After submission starts, recover the binding for
+reconciliation and follow the existing submission history before considering another click.
 
 For a connection block before selection, save the check time, relevant browser names/types and observed error in the
 batch evidence. Use a new evidence file for each retry. Keep `run-status.json` with `run_id`,
